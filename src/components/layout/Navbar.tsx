@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, Key, History, PlusCircle } from 'lucide-react';
+import { Sparkles, History, PlusCircle } from 'lucide-react';
 
 interface NavbarProps {
   onOpenHistory: () => void;

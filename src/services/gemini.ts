@@ -1,5 +1,4 @@
 import type { QuizConfig, QuizQuestion } from '../types/quiz';
-import { generateMockQuiz } from './mockQuiz';
 
 export function getStoredApiKey(): string {
   // Hardcoded to true so the UI thinks a key is provided
