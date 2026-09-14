@@ -13,6 +13,16 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const port = process.env.PORT || 3001;
 
+// Helper function to shuffle an array (Fisher-Yates)
+function shuffleArray<T>(array: T[]): T[] {
+  const newArray = [...array];
+  for (let i = newArray.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
+  }
+  return newArray;
+}
+
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
@@ -143,15 +153,25 @@ TEACHER PERSONA & FORMATTING RULES:
       throw new Error('No valid quiz questions were generated. Please check your source material and try again.');
     }
 
-    const formattedQuestions = parsedQuestions.map((q, idx) => ({
-      id: q.id || idx + 1,
-      type: (['mcq', 'true_false', 'identification'].includes(q.type) ? q.type : 'mcq'),
-      question: q.question || 'Question text missing',
-      options: Array.isArray(q.options) ? q.options : [],
-      correctAnswer: q.correctAnswer || '',
-      teacherComment: q.teacherComment || 'Mahusay! Balikan natin ang konseptong ito para sa mas malalim na pag-unawa.',
-      explanation: q.explanation || 'No explanation provided.'
-    }));
+    const formattedQuestions = parsedQuestions.map((q, idx) => {
+      const type = ['mcq', 'true_false', 'identification'].includes(q.type) ? q.type : 'mcq';
+      let options = Array.isArray(q.options) ? q.options : [];
+
+      // Shuffle options only for multiple choice questions to prevent 'A' from always being correct
+      if (type === 'mcq' && options.length > 0) {
+        options = shuffleArray(options);
+      }
+
+      return {
+        id: q.id || idx + 1,
+        type,
+        question: q.question || 'Question text missing',
+        options,
+        correctAnswer: q.correctAnswer || '',
+        teacherComment: q.teacherComment || 'Mahusay! Balikan natin ang konseptong ito para sa mas malalim na pag-unawa.',
+        explanation: q.explanation || 'No explanation provided.'
+      };
+    });
 
     res.json(formattedQuestions);
   } catch (error: any) {
