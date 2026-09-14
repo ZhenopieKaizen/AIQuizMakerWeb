@@ -164,7 +164,7 @@ TEACHER PERSONA & FORMATTING RULES:
 app.use(express.static(path.join(__dirname, '../dist')));
 
 // Anything that doesn't match the API routes should fall back to the React app
-app.get('*', (req, res) => {
+app.use((req, res) => {
   res.sendFile(path.join(__dirname, '../dist/index.html'));
 });
 
