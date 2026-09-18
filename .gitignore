@@ -12,6 +12,14 @@ dist
 dist-ssr
 *.local
 .env
+.env.*
+!.env.example
+
+# TypeScript incremental build metadata
+*.tsbuildinfo
+
+# Render CLI metadata
+.render
 
 # Editor directories and files
 .vscode/*
