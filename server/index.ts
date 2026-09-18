@@ -96,6 +96,10 @@ function selectDocumentContext(text: string, intent: string, maxChars = MAX_CONT
 app.use(cors());
 app.use(express.json({ limit: '100mb' }));
 
+app.get('/api/health', (_req, res) => {
+  res.json({ status: 'ok' });
+});
+
 app.post('/api/generate-quiz', async (req, res) => {
   try {
     const { extractedText, config } = req.body;
