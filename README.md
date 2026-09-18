@@ -31,7 +31,7 @@ QuizMaster AI is a React and Express web app that creates quizzes from PDF and P
 
 ## Files to upload to GitHub
 
-Commit the project source files, including `server`, `src`, `.env.example`, `render.yaml`, `package.json`, and `package-lock.json`.
+Render deploys this app from a Git repository. Commit the project source files, including `server`, `src`, `.env.example`, `render.yaml`, `package.json`, and `package-lock.json`.
 
 Do not upload:
 
@@ -42,6 +42,8 @@ Do not upload:
 
 These paths are already excluded in `.gitignore` when Git is used.
 
+Before pushing, confirm that `.env` is not included. Your real Gemini key must be entered in Render, never committed to the repository.
+
 ## Deploy on Render
 
 ### Blueprint method
@@ -51,6 +53,8 @@ These paths are already excluded in `.gitignore` when Git is used.
 3. Connect the GitHub repository containing this app.
 4. Render reads `render.yaml` and asks for `GEMINI_API_KEY` because it is marked as a secret.
 5. Paste the key into Render's environment-variable field and deploy.
+
+The Blueprint also configures the primary Gemini model and fallback models. You do not need to add those values manually.
 
 ### Manual Web Service method
 

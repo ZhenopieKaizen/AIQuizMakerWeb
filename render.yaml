@@ -9,3 +9,7 @@ services:
     envVars:
       - key: GEMINI_API_KEY
         sync: false
+      - key: GEMINI_MODEL
+        value: gemini-3.8-flash
+      - key: GEMINI_FALLBACK_MODELS
+        value: gemini-3.7-flash,gemini-3.6-flash

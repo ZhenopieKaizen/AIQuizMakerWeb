@@ -12,13 +12,100 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const port = process.env.PORT || 3001;
-const modelName = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
-const MAX_CONTEXT_CHARS = 300_000;
+const primaryModelName = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
+const fallbackModelNames = (process.env.GEMINI_FALLBACK_MODELS || 'gemini-3.7-flash,gemini-3.6-flash')
+  .split(',')
+  .map((model) => model.trim())
+  .filter(Boolean);
+const modelNames = [...new Set([primaryModelName, ...fallbackModelNames])];
+const MAX_CONTEXT_CHARS = 120_000;
+const MAX_GEMINI_ATTEMPTS_PER_MODEL = 2;
 
 type ChatTurn = {
   role: 'user' | 'assistant';
   content: string;
 };
+
+const wait = (milliseconds: number) =>
+  new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+function getGeminiErrorStatus(error: unknown): number | undefined {
+  if (typeof error === 'object' && error !== null) {
+    const candidate = error as {
+      code?: unknown;
+      status?: unknown;
+      error?: { code?: unknown; status?: unknown };
+    };
+
+    for (const value of [candidate.code, candidate.status, candidate.error?.code, candidate.error?.status]) {
+      if (typeof value === 'number') return value;
+      if (typeof value === 'string' && /^\d{3}$/.test(value)) return Number(value);
+    }
+  }
+
+  const message = error instanceof Error ? error.message : String(error);
+  const match = message.match(/(?:"code"\s*:\s*|\b)(408|429|5\d{2})\b/);
+  return match ? Number(match[1]) : undefined;
+}
+
+function getPublicGeminiError(error: unknown): { status: number; message: string } {
+  const status = getGeminiErrorStatus(error);
+
+  if (status === 503) {
+    return {
+      status,
+      message: 'Gemini is temporarily busy. The request was retried across the available models; please try again in a few minutes.',
+    };
+  }
+
+  if (status === 429) {
+    return {
+      status,
+      message: 'The Gemini API rate limit was reached. Please wait a moment and try again.',
+    };
+  }
+
+  return {
+    status: 500,
+    message: error instanceof Error ? error.message : 'The Gemini request failed.',
+  };
+}
+
+async function withGeminiRetry<T>(operation: (model: string) => Promise<T>): Promise<T> {
+  let lastError: unknown;
+
+  for (let modelIndex = 0; modelIndex < modelNames.length; modelIndex++) {
+    const model = modelNames[modelIndex];
+
+    for (let attempt = 1; attempt <= MAX_GEMINI_ATTEMPTS_PER_MODEL; attempt++) {
+      try {
+        return await operation(model);
+      } catch (error) {
+        lastError = error;
+        const status = getGeminiErrorStatus(error);
+        const isTransient = status === 408 || status === 429 || (status !== undefined && status >= 500);
+
+        if (!isTransient) throw error;
+
+        const hasAnotherAttempt = attempt < MAX_GEMINI_ATTEMPTS_PER_MODEL;
+        const hasFallbackModel = modelIndex < modelNames.length - 1;
+        if (!hasAnotherAttempt) {
+          if (hasFallbackModel) {
+            console.warn(`Gemini model ${model} remained unavailable; switching to ${modelNames[modelIndex + 1]}.`);
+            break;
+          }
+          throw error;
+        }
+
+        const delay = 1000 * 2 ** (attempt - 1) + Math.floor(Math.random() * 500);
+        console.warn(`Gemini model ${model} returned ${status}; retrying in ${delay}ms.`);
+        await wait(delay);
+      }
+    }
+  }
+
+  throw lastError ?? new Error('Gemini request failed after retries.');
+}
 
 // Helper function to shuffle an array (Fisher-Yates)
 function shuffleArray<T>(array: T[]): T[] {
@@ -166,8 +253,8 @@ TEACHER PERSONA & FORMATTING RULES:
 
     const userPrompt = `STUDY MATERIAL TEXT:${contextNotice}\n"""\n${quizContext}\n"""`;
 
-    const response = await ai.models.generateContent({
-      model: modelName,
+    const response = await withGeminiRetry((model) => ai.models.generateContent({
+      model,
       contents: `${systemPrompt}\n\n${userPrompt}`,
       config: {
         maxOutputTokens: 8192,
@@ -202,7 +289,7 @@ TEACHER PERSONA & FORMATTING RULES:
           }
         }
       }
-    });
+    }));
 
     const responseText = response.text;
     if (!responseText) {
@@ -254,7 +341,8 @@ TEACHER PERSONA & FORMATTING RULES:
     res.json(formattedQuestions);
   } catch (error: any) {
     console.error('API Error:', error);
-    res.status(500).json({ error: error.message || 'Failed to generate quiz using Gemini API.' });
+    const publicError = getPublicGeminiError(error);
+    res.status(publicError.status).json({ error: publicError.message });
   }
 });
 
@@ -324,14 +412,14 @@ ${conversation}
 Respond to the student's latest request now.`;
 
     const ai = new GoogleGenAI({ apiKey });
-    const response = await ai.models.generateContent({
-      model: modelName,
+    const response = await withGeminiRetry((model) => ai.models.generateContent({
+      model,
       contents: prompt,
       config: {
         maxOutputTokens: 8192,
         temperature: 0.25,
       },
-    });
+    }));
 
     const answer = response.text?.trim();
     if (!answer) throw new Error('Empty response from Gemini API.');
@@ -339,7 +427,8 @@ Respond to the student's latest request now.`;
     res.json({ answer });
   } catch (error: any) {
     console.error('Document chat API error:', error);
-    res.status(500).json({ error: error.message || 'Failed to answer using the uploaded document.' });
+    const publicError = getPublicGeminiError(error);
+    res.status(publicError.status).json({ error: publicError.message });
   }
 });
 
@@ -351,6 +440,6 @@ app.use((req, res) => {
   res.sendFile(path.join(__dirname, '../dist/index.html'));
 });
 
-app.listen(port, () => {
+app.listen(port, '0.0.0.0', () => {
   console.log(`Server is running on port ${port}`);
 });
