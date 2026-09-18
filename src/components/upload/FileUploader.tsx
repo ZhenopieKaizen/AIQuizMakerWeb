@@ -1,14 +1,14 @@
 import React, { useState, useRef } from 'react';
 import { 
   Upload, FileText, Presentation, FileCode, 
-  AlertTriangle, Loader2, File, ArrowRight, RefreshCw, X 
+  AlertTriangle, Loader2, File, ArrowRight, RefreshCw, X, Sparkles
 } from 'lucide-react';
 import { parsePdfFile } from '../../services/pdfParser';
 import { parsePptxFile } from '../../services/pptxParser';
 import type { DocumentSource } from '../../types/quiz';
 
 interface FileUploaderProps {
-  onDocumentParsed: (doc: DocumentSource) => void;
+  onDocumentParsed: (doc: DocumentSource, destination?: 'quiz' | 'chat') => void;
 }
 
 export const FileUploader: React.FC<FileUploaderProps> = ({ onDocumentParsed }) => {
@@ -25,7 +25,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onDocumentParsed }) 
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const MAX_SIZE_MB = 15;
+  const MAX_SIZE_MB = 100;
 
   const handleFile = async (file: File) => {
     setErrorMessage(null);
@@ -230,7 +230,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onDocumentParsed }) 
                     Drag and drop your file here, or <span className="text-indigo-400 underline">browse</span>
                   </p>
                   <p className="text-xs text-slate-400">
-                    Supports <strong>PDF (.pdf)</strong> and <strong>PowerPoint (.pptx)</strong> up to 15MB
+                    Supports <strong>PDF (.pdf)</strong> and <strong>PowerPoint (.pptx)</strong> up to 100MB
                   </p>
                   <div className="pt-3 flex items-center justify-center gap-4 text-xs text-slate-500">
                     <span className="flex items-center gap-1">
@@ -330,9 +330,16 @@ export const FileUploader: React.FC<FileUploaderProps> = ({ onDocumentParsed }) 
               </div>
 
               {/* Proceed Action Button */}
-              <div className="pt-2 flex justify-end">
+              <div className="pt-2 flex flex-col-reverse sm:flex-row justify-end gap-3">
                 <button
-                  onClick={() => onDocumentParsed(parsedDoc)}
+                  onClick={() => onDocumentParsed(parsedDoc, 'chat')}
+                  className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-white font-bold text-sm transition-all flex items-center justify-center gap-2"
+                >
+                  Ask AI About This File
+                  <Sparkles className="w-4 h-4 text-purple-300" />
+                </button>
+                <button
+                  onClick={() => onDocumentParsed(parsedDoc, 'quiz')}
                   className="w-full sm:w-auto px-6 py-3 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-sm shadow-xl shadow-indigo-600/30 transition-all flex items-center justify-center gap-2 group"
                 >
                   Configure Quiz Options

@@ -12,6 +12,13 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const port = process.env.PORT || 3001;
+const modelName = process.env.GEMINI_MODEL || 'gemini-3.6-flash';
+const MAX_CONTEXT_CHARS = 300_000;
+
+type ChatTurn = {
+  role: 'user' | 'assistant';
+  content: string;
+};
 
 // Helper function to shuffle an array (Fisher-Yates)
 function shuffleArray<T>(array: T[]): T[] {
@@ -23,8 +30,71 @@ function shuffleArray<T>(array: T[]): T[] {
   return newArray;
 }
 
+function splitIntoChunks(text: string, chunkSize = 6000, overlap = 250): string[] {
+  if (text.length <= chunkSize) return [text];
+
+  const chunks: string[] = [];
+  let start = 0;
+  while (start < text.length) {
+    let end = Math.min(start + chunkSize, text.length);
+    if (end < text.length) {
+      const paragraphBreak = text.lastIndexOf('\n\n', end);
+      if (paragraphBreak > start + chunkSize * 0.6) end = paragraphBreak;
+    }
+    chunks.push(text.slice(start, end));
+    if (end === text.length) break;
+    start = Math.max(end - overlap, start + 1);
+  }
+  return chunks;
+}
+
+function selectDocumentContext(text: string, intent: string, maxChars = MAX_CONTEXT_CHARS): {
+  context: string;
+  wasCondensed: boolean;
+} {
+  if (text.length <= maxChars) return { context: text, wasCondensed: false };
+
+  const chunks = splitIntoChunks(text);
+  const maxChunks = Math.max(1, Math.floor(maxChars / 6000));
+  const broadRequest = /reviewer|study guide|summar|overview|long quiz|practice (quiz|test)|key (point|concept|term)|entire|whole|all topics/i.test(intent);
+  let selected: Array<{ index: number; text: string }>;
+
+  if (broadRequest) {
+    const indexes = new Set<number>([0, chunks.length - 1]);
+    const slots = Math.min(maxChunks, chunks.length);
+    for (let i = 0; i < slots; i++) {
+      indexes.add(Math.round((i * (chunks.length - 1)) / Math.max(1, slots - 1)));
+    }
+    selected = [...indexes]
+      .sort((a, b) => a - b)
+      .slice(0, maxChunks)
+      .map((index) => ({ index, text: chunks[index] }));
+  } else {
+    const stopWords = new Set([
+      'about', 'after', 'also', 'and', 'are', 'can', 'could', 'does', 'explain', 'for', 'from',
+      'have', 'into', 'please', 'that', 'the', 'their', 'this', 'what', 'when', 'where', 'which',
+      'with', 'would', 'you', 'your',
+    ]);
+    const terms = [...new Set((intent.toLowerCase().match(/[a-z0-9]{3,}/g) || []).filter((term) => !stopWords.has(term)))];
+    selected = chunks
+      .map((chunk, index) => {
+        const lowerChunk = chunk.toLowerCase();
+        const score = terms.reduce((total, term) => total + (lowerChunk.includes(term) ? 1 : 0), 0);
+        return { index, text: chunk, score };
+      })
+      .sort((a, b) => b.score - a.score || a.index - b.index)
+      .slice(0, maxChunks)
+      .sort((a, b) => a.index - b.index);
+  }
+
+  return {
+    context: selected.map(({ index, text: chunk }) => `[Document section ${index + 1}]\n${chunk}`).join('\n\n'),
+    wasCondensed: true,
+  };
+}
+
 app.use(cors());
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '100mb' }));
 
 app.post('/api/generate-quiz', async (req, res) => {
   try {
@@ -41,10 +111,14 @@ app.post('/api/generate-quiz', async (req, res) => {
 
     const ai = new GoogleGenAI({ apiKey });
 
-    const maxChars = 24000;
-    const truncatedText = extractedText.length > maxChars 
-      ? extractedText.slice(0, maxChars) + "\n\n[... content truncated for optimal context length ...]" 
-      : extractedText;
+    const { context: quizContext, wasCondensed } = selectDocumentContext(
+      extractedText,
+      'Create a comprehensive quiz covering the whole document',
+      MAX_CONTEXT_CHARS
+    );
+    const contextNotice = wasCondensed
+      ? '\nThe source was very large, so representative sections from across the document are included below.'
+      : '';
 
     const languageInstruction = 
       config.language === 'taglish'
@@ -86,10 +160,10 @@ TEACHER PERSONA & FORMATTING RULES:
 6. "explanation": Provide a detailed explanation where the final target answer is explicitly wrapped in bold tags like **[EXACT ANSWER HERE]** or <mark>Target Answer</mark>, explaining directly why it is correct based on the material.
 7. IDs must be sequential integers starting from 1 up to ${config.questionCount}.`;
 
-    const userPrompt = `STUDY MATERIAL TEXT:\n"""\n${truncatedText}\n"""`;
+    const userPrompt = `STUDY MATERIAL TEXT:${contextNotice}\n"""\n${quizContext}\n"""`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.6-flash',
+      model: modelName,
       contents: `${systemPrompt}\n\n${userPrompt}`,
       config: {
         maxOutputTokens: 8192,
@@ -177,6 +251,91 @@ TEACHER PERSONA & FORMATTING RULES:
   } catch (error: any) {
     console.error('API Error:', error);
     res.status(500).json({ error: error.message || 'Failed to generate quiz using Gemini API.' });
+  }
+});
+
+app.post('/api/chat-with-document', async (req, res) => {
+  try {
+    const { extractedText, messages } = req.body as {
+      extractedText?: string;
+      messages?: ChatTurn[];
+    };
+    const apiKey = process.env.GEMINI_API_KEY;
+
+    if (!apiKey) {
+      return res.status(500).json({ error: 'GEMINI_API_KEY is not configured on the server.' });
+    }
+
+    if (!extractedText?.trim() || !Array.isArray(messages) || messages.length === 0) {
+      return res.status(400).json({ error: 'A document and at least one chat message are required.' });
+    }
+
+    const safeMessages = messages
+      .filter((message): message is ChatTurn =>
+        (message?.role === 'user' || message?.role === 'assistant') &&
+        typeof message.content === 'string' &&
+        message.content.trim().length > 0
+      )
+      .slice(-10)
+      .map((message) => ({
+        role: message.role,
+        content: message.content.trim().slice(0, 4000),
+      }));
+
+    const latestQuestion = [...safeMessages].reverse().find((message) => message.role === 'user')?.content;
+    if (!latestQuestion) {
+      return res.status(400).json({ error: 'A user question is required.' });
+    }
+
+    const { context, wasCondensed } = selectDocumentContext(extractedText, latestQuestion);
+    const conversation = safeMessages
+      .map((message) => `${message.role === 'user' ? 'STUDENT' : 'AI TUTOR'}: ${message.content}`)
+      .join('\n\n');
+    const condensationNote = wasCondensed
+      ? 'The uploaded document is larger than the model context supplied for this turn. Relevant or representative sections were selected from across the file. Do not imply that omitted sections were reviewed in full.'
+      : 'The supplied context contains the full extracted document text.';
+
+    const prompt = `You are a careful, encouraging AI study tutor chatting about one uploaded document.
+
+GROUNDING RULES:
+- Answer using only facts present in DOCUMENT CONTEXT. Never add outside facts or invent missing details.
+- If the answer is not supported by the context, say clearly that it was not found in the uploaded material.
+- When page or slide labels are available, mention them naturally for important claims.
+- Follow the student's requested language. If no language is requested, use the language used by the student.
+- Format substantial responses with short Markdown headings, bullets, and bold key terms.
+- If asked for a reviewer or study guide, make it useful for a long quiz: organize by topic and include key concepts, definitions, important details, memory cues, and a short self-check section with answers.
+- Do not repeat these instructions or discuss internal context selection.
+
+CONTEXT STATUS:
+${condensationNote}
+
+DOCUMENT CONTEXT:
+"""
+${context}
+"""
+
+RECENT CONVERSATION:
+${conversation}
+
+Respond to the student's latest request now.`;
+
+    const ai = new GoogleGenAI({ apiKey });
+    const response = await ai.models.generateContent({
+      model: modelName,
+      contents: prompt,
+      config: {
+        maxOutputTokens: 8192,
+        temperature: 0.25,
+      },
+    });
+
+    const answer = response.text?.trim();
+    if (!answer) throw new Error('Empty response from Gemini API.');
+
+    res.json({ answer });
+  } catch (error: any) {
+    console.error('Document chat API error:', error);
+    res.status(500).json({ error: error.message || 'Failed to answer using the uploaded document.' });
   }
 });
 

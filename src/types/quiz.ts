@@ -3,6 +3,12 @@ export type DifficultyLevel = 'easy' | 'medium' | 'hard' | 'mixed';
 export type QuizLanguage = 'english' | 'tagalog' | 'taglish';
 export type StudyMode = 'quiz' | 'flashcards';
 
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+}
+
 export interface QuizQuestion {
   id: number;
   type: QuestionType;

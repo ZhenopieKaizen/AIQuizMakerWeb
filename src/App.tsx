@@ -10,10 +10,11 @@ import { QuizConfigForm } from './components/config/QuizConfigForm';
 import { QuizContainer } from './components/quiz/QuizContainer';
 import { ScoreSummary } from './components/analytics/ScoreSummary';
 import { HistoryList } from './components/analytics/HistoryList';
+import { DocumentChat } from './components/chat/DocumentChat';
 import { AlertCircle } from 'lucide-react';
 
 export function App() {
-  const [activeStep, setActiveStep] = useState<'upload' | 'config' | 'quiz' | 'results' | 'history'>('upload');
+  const [activeStep, setActiveStep] = useState<'upload' | 'config' | 'chat' | 'quiz' | 'results' | 'history'>('upload');
   
   // Data States
   const [documentSource, setDocumentSource] = useState<DocumentSource | null>(null);
@@ -44,10 +45,10 @@ export function App() {
     }
   };
 
-  const handleDocumentParsed = (doc: DocumentSource) => {
+  const handleDocumentParsed = (doc: DocumentSource, destination: 'quiz' | 'chat' = 'quiz') => {
     setDocumentSource(doc);
     setGlobalError(null);
-    setActiveStep('config');
+    setActiveStep(destination === 'chat' ? 'chat' : 'config');
   };
 
   const handleGenerateQuiz = async (config: QuizConfig) => {
@@ -101,8 +102,10 @@ export function App() {
       {/* Top Navigation */}
       <Navbar
         onOpenHistory={() => setActiveStep('history')}
+        onOpenChat={() => documentSource && setActiveStep('chat')}
         onNewQuiz={handleNewQuiz}
         historyCount={history.length}
+        hasDocument={Boolean(documentSource)}
         activeStep={activeStep}
       />
 
@@ -138,6 +141,14 @@ export function App() {
             onBack={() => setActiveStep('upload')}
             onGenerateQuiz={handleGenerateQuiz}
             isGenerating={isGenerating}
+          />
+        )}
+
+        {/* Document-grounded AI Chat */}
+        {activeStep === 'chat' && documentSource && (
+          <DocumentChat
+            documentSource={documentSource}
+            onBackToQuiz={() => setActiveStep('config')}
           />
         )}
 
