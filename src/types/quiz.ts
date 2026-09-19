@@ -3,6 +3,13 @@ export type DifficultyLevel = 'easy' | 'medium' | 'hard' | 'mixed';
 export type QuizLanguage = 'english' | 'tagalog' | 'taglish';
 export type StudyMode = 'quiz' | 'flashcards';
 
+export interface ChatMessage {
+  id?: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp?: string;
+}
+
 export interface QuizQuestion {
   id: number;
   type: QuestionType;
@@ -30,7 +37,7 @@ export interface QuizConfig {
 export interface DocumentSource {
   fileName: string;
   fileSize: number;
-  fileType: 'docx';
+  fileType: 'docx' | 'pdf';
   extractedText: string;
   itemCount: number; // extracted paragraph/section count
   characterCount: number;
