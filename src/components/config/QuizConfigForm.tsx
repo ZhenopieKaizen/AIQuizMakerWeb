@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { 
   SlidersHorizontal, Languages, 
   Sparkles, ArrowLeft, ToggleLeft, ToggleRight,
-  BookOpen, Brain, Check, ListFilter, Gauge
+  BookOpen, Brain, Check, ListFilter, Gauge, Clock
 } from 'lucide-react';
 import type { 
   QuizConfig, QuestionType, DifficultyLevel, 
@@ -14,13 +14,15 @@ interface QuizConfigFormProps {
   onBack: () => void;
   onGenerateQuiz: (config: QuizConfig) => void;
   isGenerating: boolean;
+  generationProgress: number;
 }
 
 export const QuizConfigForm: React.FC<QuizConfigFormProps> = ({
   documentSource,
   onBack,
   onGenerateQuiz,
-  isGenerating
+  isGenerating,
+  generationProgress
 }) => {
   const [questionCount, setQuestionCount] = useState<number>(10);
   const [selectedTypes, setSelectedTypes] = useState<QuestionType[]>(['mcq', 'true_false', 'identification']);
@@ -28,8 +30,9 @@ export const QuizConfigForm: React.FC<QuizConfigFormProps> = ({
   const [language, setLanguage] = useState<QuizLanguage>('taglish');
   const [studyMode, setStudyMode] = useState<StudyMode>('quiz');
   const [instantFeedback, setInstantFeedback] = useState<boolean>(true);
+  const [timeLimitMinutes, setTimeLimitMinutes] = useState<number>(10);
   const [topicTitle, setTopicTitle] = useState<string>(
-    documentSource.fileName.replace(/\.(pdf|pptx|txt)$/i, '')
+    documentSource.fileName.replace(/\.docx$/i, '')
   );
 
   const toggleQuestionType = (type: QuestionType) => {
@@ -51,6 +54,7 @@ export const QuizConfigForm: React.FC<QuizConfigFormProps> = ({
       language,
       studyMode,
       instantFeedback,
+      timeLimitMinutes,
       topicTitle: topicTitle.trim() || documentSource.fileName
     });
   };
@@ -120,6 +124,57 @@ export const QuizConfigForm: React.FC<QuizConfigFormProps> = ({
               </button>
             ))}
           </div>
+        </div>
+
+        {/* Quiz Time Limit */}
+        <div className="space-y-3">
+          <label className="flex items-center justify-between gap-3 text-xs font-semibold text-slate-300 uppercase tracking-wider">
+            <span className="flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5 text-rose-400" />
+              Quiz Time Limit
+            </span>
+            <span className="text-rose-300 font-bold normal-case tracking-normal">
+              {timeLimitMinutes} {timeLimitMinutes === 1 ? 'minute' : 'minutes'}
+            </span>
+          </label>
+
+          <div className="grid grid-cols-4 gap-3">
+            {[5, 10, 15, 30].map((minutes) => (
+              <button
+                key={minutes}
+                type="button"
+                onClick={() => setTimeLimitMinutes(minutes)}
+                className={`py-3 rounded-xl border text-sm font-bold transition-all ${
+                  timeLimitMinutes === minutes
+                    ? 'bg-rose-600 border-rose-500 text-white shadow-lg shadow-rose-600/20'
+                    : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                }`}
+              >
+                {minutes} min
+              </button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-950 p-3">
+            <label htmlFor="custom-time-limit" className="text-xs text-slate-400 whitespace-nowrap">
+              Custom minutes
+            </label>
+            <input
+              id="custom-time-limit"
+              type="number"
+              min={1}
+              max={180}
+              value={timeLimitMinutes}
+              onChange={(event) => {
+                const minutes = Number(event.target.value);
+                setTimeLimitMinutes(Number.isFinite(minutes) ? Math.min(180, Math.max(1, minutes)) : 1);
+              }}
+              className="w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm font-bold text-white focus:outline-none focus:border-rose-500"
+            />
+          </div>
+          <p className="text-[11px] text-slate-500">
+            The quiz is submitted automatically when the countdown reaches zero.
+          </p>
         </div>
 
         {/* Question Types Multi-Selector */}
@@ -268,6 +323,42 @@ export const QuizConfigForm: React.FC<QuizConfigFormProps> = ({
           </div>
         )}
 
+        {/* Generation Progress */}
+        {isGenerating && (
+          <div className="space-y-2 rounded-2xl border border-indigo-500/30 bg-indigo-950/30 p-4" aria-live="polite">
+            <div className="flex items-center justify-between gap-4 text-xs">
+              <span className="font-semibold text-indigo-200">
+                {generationProgress < 15
+                  ? 'Preparing your Word material...'
+                  : generationProgress < 95
+                    ? 'AI is generating your questions...'
+                    : generationProgress < 100
+                      ? 'Waiting for the completed quiz...'
+                      : 'Quiz ready!'}
+              </span>
+              <span className="font-extrabold tabular-nums text-white">
+                {generationProgress}%
+              </span>
+            </div>
+            <div
+              className="h-2.5 w-full overflow-hidden rounded-full bg-slate-800"
+              role="progressbar"
+              aria-label="Quiz generation progress"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={generationProgress}
+            >
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 transition-[width] duration-500 ease-out"
+                style={{ width: `${generationProgress}%` }}
+              />
+            </div>
+            <p className="text-[11px] text-slate-400">
+              Please keep this page open while the quiz is being created.
+            </p>
+          </div>
+        )}
+
         {/* Generate Button */}
         <div className="pt-4 flex justify-end">
           <button
@@ -275,8 +366,10 @@ export const QuizConfigForm: React.FC<QuizConfigFormProps> = ({
             disabled={isGenerating}
             className="w-full py-4 rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-500 hover:to-pink-500 text-white font-extrabold text-sm shadow-xl shadow-indigo-600/30 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
           >
-            <Sparkles className="w-5 h-5 text-yellow-300 animate-spin" />
-            {isGenerating ? 'AI Generating Quiz Questions...' : 'Generate Quiz with Gemini AI'}
+            <Sparkles className={`w-5 h-5 text-yellow-300 ${isGenerating ? 'animate-spin' : ''}`} />
+            {isGenerating
+              ? `Generating Quiz... ${generationProgress}%`
+              : 'Generate Quiz with AI'}
           </button>
         </div>
 

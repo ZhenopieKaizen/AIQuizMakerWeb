@@ -3,12 +3,6 @@ export type DifficultyLevel = 'easy' | 'medium' | 'hard' | 'mixed';
 export type QuizLanguage = 'english' | 'tagalog' | 'taglish';
 export type StudyMode = 'quiz' | 'flashcards';
 
-export interface ChatMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-}
-
 export interface QuizQuestion {
   id: number;
   type: QuestionType;
@@ -29,15 +23,16 @@ export interface QuizConfig {
   language: QuizLanguage;
   studyMode: StudyMode;
   instantFeedback: boolean;
+  timeLimitMinutes: number;
   topicTitle: string;
 }
 
 export interface DocumentSource {
   fileName: string;
   fileSize: number;
-  fileType: 'pdf' | 'pptx' | 'txt';
+  fileType: 'docx';
   extractedText: string;
-  itemCount: number; // page count or slide count
+  itemCount: number; // extracted paragraph/section count
   characterCount: number;
   uploadDate: string;
 }

@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import confetti from 'canvas-confetti';
 import { 
   CheckCircle2, XCircle, Flag, Sparkles, GraduationCap 
 } from 'lucide-react';
@@ -15,6 +16,11 @@ interface QuizCardProps {
   instantFeedback: boolean;
 }
 
+type AnswerEffect = {
+  id: number;
+  kind: 'correct' | 'incorrect';
+};
+
 export const QuizCard: React.FC<QuizCardProps> = ({
   question,
   questionNumber,
@@ -25,14 +31,87 @@ export const QuizCard: React.FC<QuizCardProps> = ({
   instantFeedback
 }) => {
   const [identInput, setIdentInput] = useState(userAnswer || '');
+  const [answerEffect, setAnswerEffect] = useState<AnswerEffect | null>(null);
+  const effectSequence = useRef(0);
+  const effectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const audioContext = useRef<AudioContext | null>(null);
 
   const hasAnswered = !!userAnswer;
   const isCorrect = hasAnswered && userAnswer?.trim().toLowerCase() === question.correctAnswer.trim().toLowerCase();
+  const showFeedback = hasAnswered && instantFeedback;
+  const feedbackState = showFeedback ? (isCorrect ? 'correct' : 'incorrect') : null;
+
+  useEffect(() => () => {
+    if (effectTimer.current) clearTimeout(effectTimer.current);
+    if (audioContext.current) void audioContext.current.close();
+  }, []);
+
+  const playCorrectChime = () => {
+    const context = audioContext.current ?? new AudioContext();
+    audioContext.current = context;
+
+    if (context.state === 'suspended') void context.resume();
+
+    const startAt = context.currentTime;
+    const notes = [659.25, 783.99];
+
+    notes.forEach((frequency, index) => {
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      const noteStart = startAt + index * 0.075;
+
+      oscillator.type = 'sine';
+      oscillator.frequency.setValueAtTime(frequency, noteStart);
+      gain.gain.setValueAtTime(0.0001, noteStart);
+      gain.gain.exponentialRampToValueAtTime(0.075, noteStart + 0.012);
+      gain.gain.exponentialRampToValueAtTime(0.0001, noteStart + 0.16);
+
+      oscillator.connect(gain);
+      gain.connect(context.destination);
+      oscillator.start(noteStart);
+      oscillator.stop(noteStart + 0.17);
+    });
+  };
+
+  const triggerAnswerEffect = (answer: string) => {
+    if (!instantFeedback) return;
+
+    const kind = answer.trim().toLowerCase() === question.correctAnswer.trim().toLowerCase()
+      ? 'correct'
+      : 'incorrect';
+
+    effectSequence.current += 1;
+    setAnswerEffect({ id: effectSequence.current, kind });
+
+    if (effectTimer.current) clearTimeout(effectTimer.current);
+    effectTimer.current = setTimeout(() => setAnswerEffect(null), 760);
+
+    if (kind === 'correct') {
+      playCorrectChime();
+      void confetti({
+        particleCount: 24,
+        spread: 48,
+        startVelocity: 20,
+        gravity: 0.9,
+        scalar: 0.68,
+        ticks: 85,
+        origin: { x: 0.5, y: 0.55 },
+        colors: ['#34d399', '#2dd4bf', '#818cf8', '#f8fafc'],
+        disableForReducedMotion: true,
+        zIndex: 60,
+      });
+    }
+  };
+
+  const handleAnswerSelect = (answer: string) => {
+    triggerAnswerEffect(answer);
+    onSelectAnswer(answer);
+  };
 
   const handleIdentSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (identInput.trim()) {
-      onSelectAnswer(identInput.trim());
+      handleAnswerSelect(identInput.trim());
     }
   };
 
@@ -54,7 +133,23 @@ export const QuizCard: React.FC<QuizCardProps> = ({
   };
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6 relative overflow-hidden transition-all">
+    <div className={`quiz-card bg-slate-900 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-2xl space-y-6 relative overflow-hidden transition-all ${
+      feedbackState ? `quiz-card--${feedbackState}` : ''
+    }`}>
+      {answerEffect && (
+        <div
+          key={answerEffect.id}
+          className={`answer-impact answer-impact--${answerEffect.kind}`}
+          aria-hidden="true"
+        >
+          {answerEffect.kind === 'correct' ? (
+            <CheckCircle2 className="w-5 h-5" />
+          ) : (
+            <XCircle className="w-5 h-5" />
+          )}
+          <span>{answerEffect.kind === 'correct' ? 'Correct!' : 'Try again'}</span>
+        </div>
+      )}
       
       {/* Top Bar: Type, Question Count & Flag */}
       <div className="flex items-center justify-between pb-4 border-b border-slate-800">
@@ -95,12 +190,15 @@ export const QuizCard: React.FC<QuizCardProps> = ({
             const isTargetCorrect = option.trim().toLowerCase() === question.correctAnswer.trim().toLowerCase();
 
             let optionStyle = 'bg-slate-950 border-slate-800 text-slate-300 hover:border-indigo-500/50 hover:bg-slate-800/60';
+            let feedbackAnimation = '';
 
-            if (hasAnswered && instantFeedback) {
+            if (showFeedback) {
               if (isTargetCorrect) {
                 optionStyle = 'bg-emerald-950/60 border-emerald-500/80 text-emerald-200 font-bold';
+                feedbackAnimation = 'quiz-option--correct';
               } else if (isSelected && !isTargetCorrect) {
                 optionStyle = 'bg-rose-950/60 border-rose-500/80 text-rose-200 font-bold';
+                feedbackAnimation = 'quiz-option--incorrect';
               } else {
                 optionStyle = 'bg-slate-950/40 border-slate-900 text-slate-500 opacity-60';
               }
@@ -111,8 +209,10 @@ export const QuizCard: React.FC<QuizCardProps> = ({
             return (
               <button
                 key={idx}
-                onClick={() => onSelectAnswer(option)}
-                className={`w-full p-4 rounded-2xl border text-left text-xs sm:text-sm font-medium transition-all flex items-center justify-between h-auto min-h-[3.25rem] ${optionStyle}`}
+                type="button"
+                onClick={() => handleAnswerSelect(option)}
+                aria-pressed={isSelected}
+                className={`quiz-option w-full p-4 rounded-2xl border text-left text-xs sm:text-sm font-medium transition-all flex items-center justify-between h-auto min-h-[3.25rem] ${optionStyle} ${feedbackAnimation}`}
               >
                 <div className="flex items-start gap-3 flex-1 min-w-0 pr-2">
                   <span className="w-6 h-6 rounded-lg bg-slate-800/80 text-slate-400 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">
@@ -121,7 +221,7 @@ export const QuizCard: React.FC<QuizCardProps> = ({
                   <span className="whitespace-normal break-words leading-normal">{option}</span>
                 </div>
 
-                {hasAnswered && instantFeedback && (
+                {showFeedback && (
                   <div className="shrink-0 ml-2">
                     {isTargetCorrect && <CheckCircle2 className="w-5 h-5 text-emerald-400" />}
                     {isSelected && !isTargetCorrect && <XCircle className="w-5 h-5 text-rose-400" />}
@@ -144,7 +244,10 @@ export const QuizCard: React.FC<QuizCardProps> = ({
               onChange={(e) => setIdentInput(e.target.value)}
               placeholder="Enter answer..."
               disabled={hasAnswered && instantFeedback}
-              className="flex-1 px-4 py-3 bg-slate-950 border border-slate-800 rounded-2xl text-white text-sm font-medium focus:outline-none focus:border-indigo-500"
+              aria-invalid={showFeedback ? !isCorrect : undefined}
+              className={`quiz-identification-input flex-1 px-4 py-3 bg-slate-950 border border-slate-800 rounded-2xl text-white text-sm font-medium focus:outline-none focus:border-indigo-500 ${
+                feedbackState ? `quiz-identification-input--${feedbackState}` : ''
+              }`}
             />
             <button
               type="submit"
@@ -158,22 +261,34 @@ export const QuizCard: React.FC<QuizCardProps> = ({
       )}
 
       {/* Instant Feedback & Teacher Persona Explanation Block */}
-      {hasAnswered && instantFeedback && (
-        <div className={`p-5 rounded-2xl border text-xs leading-relaxed space-y-4 animate-fadeIn ${
+      {showFeedback && (
+        <div
+          key={`${question.id}-${userAnswer}`}
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+          className={`quiz-feedback-panel quiz-feedback-panel--${feedbackState} p-5 rounded-2xl border text-xs leading-relaxed space-y-4 ${
           isCorrect 
             ? 'bg-emerald-950/30 border-emerald-500/30 text-emerald-200' 
             : 'bg-rose-950/30 border-rose-500/30 text-rose-200'
-        }`}>
+          }`}
+        >
           {/* Result Status Header */}
           <div className="flex items-center justify-between pb-2 border-b border-slate-800/60">
             <div className="flex items-center gap-2 font-bold text-sm">
               {isCorrect ? (
                 <span className="flex items-center gap-1.5 text-emerald-400">
-                  <CheckCircle2 className="w-4 h-4" /> Correct Answer!
+                  <span className="quiz-result-icon quiz-result-icon--correct">
+                    <CheckCircle2 className="w-5 h-5" aria-hidden="true" />
+                  </span>
+                  Correct Answer!
                 </span>
               ) : (
                 <span className="flex items-center gap-1.5 text-rose-400">
-                  <XCircle className="w-4 h-4" /> Incorrect Answer
+                  <span className="quiz-result-icon quiz-result-icon--incorrect">
+                    <XCircle className="w-5 h-5" aria-hidden="true" />
+                  </span>
+                  Incorrect Answer
                 </span>
               )}
             </div>

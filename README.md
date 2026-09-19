@@ -1,10 +1,10 @@
 # QuizMaster AI
 
-QuizMaster AI is a React and Express web app that creates quizzes from PDF and PowerPoint files and lets students chat with the uploaded material. Google Gemini requests run on the server so the API key is never included in the browser bundle.
+QuizMaster AI is a React and Express web app that creates quizzes from Microsoft Word (`.docx`) study files. Word text extraction runs in the browser, while Google Gemini quiz-generation requests run on the server so the API key is never included in the browser bundle.
 
 ## Requirements
 
-- Node.js 22.12 through Node.js 24
+- Node.js 24.19 (pinned in `.node-version` for consistent local and Render builds)
 - A Gemini API key from [Google AI Studio](https://aistudio.google.com/app/apikey)
 
 ## Run locally
@@ -12,7 +12,7 @@ QuizMaster AI is a React and Express web app that creates quizzes from PDF and P
 1. Install dependencies:
 
    ```bash
-   npm install
+    npm ci
    ```
 
 2. Copy `.env.example` to `.env` and replace the example value with your Gemini API key:
@@ -31,13 +31,14 @@ QuizMaster AI is a React and Express web app that creates quizzes from PDF and P
 
 ## Files to upload to GitHub
 
-Render deploys this app from a Git repository. Commit the project source files, including `server`, `src`, `.env.example`, `render.yaml`, `package.json`, and `package-lock.json`.
+Render deploys this app from a Git repository; it does not need a ZIP upload. Commit the project source files, including `server`, `src`, `.env.example`, `.node-version`, `render.yaml`, `package.json`, `package-lock.json`, and all TypeScript config files.
 
 Do not upload:
 
 - `.env` (contains your secret key)
 - `node_modules` (dependencies are installed during deployment)
 - `dist` (generated during the Render build)
+- `dist-server` (generated during the Render build)
 - log files
 
 These paths are already excluded in `.gitignore` when Git is used.
@@ -72,7 +73,7 @@ The server automatically uses the `PORT` value assigned by Render. Do not create
 
 ```bash
 npm run dev      # local frontend and backend development
-npm run build    # type-check and create the production frontend
-npm start        # run the production Express server
+npm run build    # type-check and build the frontend and backend
+npm start        # serve the production build (run npm run build first)
 npm run lint     # run the linter
 ```

@@ -8,6 +8,7 @@ import { QuizTimer } from './QuizTimer';
 import { QuizCard } from './QuizCard';
 import { FlashcardViewer } from './FlashcardViewer';
 import { generateMockFlashcards } from '../../services/mockQuiz';
+import { playPerfectScoreSound } from '../../services/soundEffects';
 
 interface QuizContainerProps {
   questions: QuizQuestion[];
@@ -53,7 +54,7 @@ export const QuizContainer: React.FC<QuizContainerProps> = ({
   const normalizeText = (text: string) =>
     text.trim().toLowerCase().replace(/[.,/#!$%^&*;:{}=\-_`~()]/g, '').replace(/\s+/g, ' ');
 
-  const handleSubmitQuiz = () => {
+  const handleSubmitQuiz = (timeSpentOverride?: number) => {
     // Calculate final score
     let score = 0;
     const finalQuestions: QuizQuestion[] = questions.map((q) => {
@@ -78,10 +79,14 @@ export const QuizContainer: React.FC<QuizContainerProps> = ({
       totalQuestions: questions.length,
       score,
       percentage,
-      timeSpentSeconds: timeSpent,
+      timeSpentSeconds: timeSpentOverride ?? timeSpent,
       config,
       questions: finalQuestions
     };
+
+    if (percentage === 100) {
+      playPerfectScoreSound();
+    }
 
     onFinishQuiz(result);
   };
@@ -137,10 +142,13 @@ export const QuizContainer: React.FC<QuizContainerProps> = ({
             </button>
           </div>
 
-          {/* Stopwatch Timer */}
-          {activeMode === 'quiz' && (
-            <QuizTimer onTimeUpdate={setTimeSpent} isPaused={false} />
-          )}
+          {/* Countdown Timer */}
+          <QuizTimer
+            totalSeconds={(config.timeLimitMinutes ?? 10) * 60}
+            onTimeUpdate={setTimeSpent}
+            onTimeExpired={() => handleSubmitQuiz((config.timeLimitMinutes ?? 10) * 60)}
+            isPaused={false}
+          />
 
           {/* Review Grid Toggle */}
           {activeMode === 'quiz' && (
@@ -235,7 +243,7 @@ export const QuizContainer: React.FC<QuizContainerProps> = ({
 
             {isLastQuestion ? (
               <button
-                onClick={handleSubmitQuiz}
+                onClick={() => handleSubmitQuiz()}
                 className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-xs font-extrabold shadow-xl shadow-emerald-600/30 transition-all"
               >
                 Submit Exam & View Score <CheckCircle2 className="w-4 h-4" />
@@ -255,7 +263,7 @@ export const QuizContainer: React.FC<QuizContainerProps> = ({
         /* Flashcards Mode */
         <FlashcardViewer
           cards={generateMockFlashcards(questions)}
-          onFinish={handleSubmitQuiz}
+          onFinish={() => handleSubmitQuiz()}
         />
       )}
 

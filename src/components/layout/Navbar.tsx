@@ -1,21 +1,17 @@
 import React from 'react';
-import { Sparkles, History, MessageSquareText, PlusCircle } from 'lucide-react';
+import { Sparkles, History, PlusCircle } from 'lucide-react';
 
 interface NavbarProps {
   onOpenHistory: () => void;
-  onOpenChat: () => void;
   onNewQuiz: () => void;
   historyCount: number;
-  hasDocument: boolean;
-  activeStep: 'upload' | 'config' | 'chat' | 'quiz' | 'results' | 'history';
+  activeStep: 'upload' | 'config' | 'quiz' | 'results' | 'history';
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
   onOpenHistory,
-  onOpenChat,
   onNewQuiz,
   historyCount,
-  hasDocument,
   activeStep
 }) => {
   return (
@@ -42,7 +38,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               </span>
             </div>
             <p className="text-xs text-slate-400 hidden sm:block">
-              PDF & PPTX Reviewer & Generator
+              Word Reviewer & Quiz Generator
             </p>
           </div>
         </div>
@@ -50,20 +46,6 @@ export const Navbar: React.FC<NavbarProps> = ({
         {/* Action Buttons & Status Indicators */}
         <div className="flex items-center gap-2 sm:gap-3">
 
-          {hasDocument && (
-            <button
-              onClick={onOpenChat}
-              className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium shadow-sm transition-all ${
-                activeStep === 'chat'
-                  ? 'border-purple-500/40 bg-purple-600/20 text-purple-200'
-                  : 'border-slate-700/60 bg-slate-800/80 text-slate-300 hover:bg-slate-800'
-              }`}
-            >
-              <MessageSquareText className="h-3.5 w-3.5 text-purple-400" />
-              <span className="hidden sm:inline">Ask AI</span>
-            </button>
-          )}
-          
           {/* New Quiz Reset Button */}
           {activeStep !== 'upload' && (
             <button
