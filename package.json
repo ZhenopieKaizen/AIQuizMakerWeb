@@ -10,7 +10,7 @@
     "dev": "concurrently \"npm run server\" \"vite\"",
     "start": "node dist-server/index.js",
     "server": "tsx server/index.ts",
-    "build": "tsc -b tsconfig.app.json tsconfig.node.json tsconfig.server.json && vite build",
+    "build": "tsc -b tsconfig.app.json tsconfig.node.json tsconfig.server.json --force && vite build",
     "lint": "oxlint",
     "preview": "vite preview"
   },
